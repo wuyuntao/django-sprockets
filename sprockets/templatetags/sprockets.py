@@ -6,17 +6,34 @@ import urlparse
 from django import template
 from django.conf import settings
 
+from yaml import load
+try:
+    from yaml import CLoader as Loader
+except ImportError:
+    from yaml import Loader
+
 register = template.Library()
 
 ASSETS = {}
+MANIFEST_LOADED = False
 
 def get_assets(url):
-    if not settings.DEBUG and ASSETS.has_key(url):
+    if ASSETS.has_key(url):
         return ASSETS[url]
-    assets_url = '%s?url=%s' % (settings.SPROCKETS_GET_ASSET_URL, url)
-    req = urllib2.Request(assets_url)
-    resp = urllib2.urlopen(req)
-    assets = ASSETS[url] = json.loads(resp.read())
+
+    if settings.DEBUG:
+        # Get assets from restful API
+        assets_url = '%s?url=%s' % (settings.SPROCKETS_GET_ASSET_URL, url)
+        resp = urllib2.urlopen(assets_url)
+        assets = ASSETS[url] = json.loads(resp.read())
+    else:
+        # Get assets from production manifest
+        if not MANIFEST_LOADED :
+            assets = load(open(settings.SPROCKETS_MANIFEST_PATH).read(), Loader=Loader)
+            for key, value in assets.items():
+                ASSETS[key] = [value]
+            MANIFEST_LOADED = True
+        assets = ASSETS.get(url, [])
     return assets
 
 @register.simple_tag
